@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block body %}
+
+<h2>Chat</h2>
+<div id="chatMessages">
+    <p>Welcome to world events chat!</p>
+</div>
+<textarea></textarea>
+<input type="button" value="Submit" onclick="submit()" />
+
+
+<script>
+
+const States = Object.freeze({
+    CATEGORY_SELECTION: "category selection",
+    QUERY_INPUT: "query input",
+    IN_QUEUE: "in queue",
+    PROCESSING: "processing"
+})
+
+var state = States.CATEGORY_SELECTION;
+doCategorySelection();
+
+function doCategorySelection() {
+    var newP = document.createElement("p");
+    newP.innerHTML = "Enter the number of the category your query belongs. Selecting one would make results more accurate. Enter 0 for querying the complete dataset.";
+    document.getElementById("chatMessages").appendChild(newP);
+}
+
+function submit() {
+    
+}
+
+</script>
+
+{% endblock %}
