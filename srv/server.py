@@ -1,5 +1,7 @@
 from flask import Flask, render_template, jsonify, request
-from rag import start_chat_job, get_query_job
+from rag import start_chat_job, fetch_chat_job
+import sys
+sys.stdout.reconfigure(line_buffering=True)
 
 dataset_categories = [
 	"armed conflicts and attacks",
@@ -42,11 +44,11 @@ def post_events_chat_job():
 	if not query:
 		return jsonify({"error": "Missing required parameter: query"}), 400
 
-	if mode is not "raw" and mode is not "raw":
+	if mode != "raw" and mode != "rag":
 		return jsonify({"error": "Bad value for mode parameter"}), 400
 	
 	category = data.get("category") # can be posted without a category
-	job_id = start_chat_job("rag", query, category)
+	job_id = start_chat_job(mode, category, query)
 
 	if job_id is None:
 		return jsonify({"error": "Server busy"}), 429
@@ -59,7 +61,7 @@ def get_chat_job(job_id):
 	if not job_id:
 		return jsonify({"error": "Missing required parameter: jobId"}), 400
 
-	job = get_chat_job(job_id)
+	job = fetch_chat_job(job_id)
 
 	if job is None:
 		return jsonify({"error": "Job not found"}), 404

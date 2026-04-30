@@ -15,13 +15,13 @@ lock = threading.Lock()
 
 
 events_vector_store = Chroma(
-    persist_directory="./chroma_db",
+    persist_directory="../tests/chroma_db",
     collection_name="events",
     embedding_function=embedding_model
 )
 
 sections_vector_store = Chroma(
-    persist_directory="./chroma_db",
+    persist_directory="../tests/chroma_db",
     collection_name="sections",
     embedding_function=embedding_model
 )
@@ -41,7 +41,7 @@ def start_chat_job(mode, category, query):
         "result": None
     } 
 
-    if mode is "raw":
+    if mode == "raw":
         run_func = run_raw_job
     else:
         run_func = run_rag_job
@@ -55,11 +55,20 @@ def start_chat_job(mode, category, query):
 
     return job_id
 
-def get_chat_job(job_id):
-    job = jobs.pop(job_id, None)
-    return job.copy() if job else None
+def fetch_chat_job(job_id):
+    job = jobs.get(job_id)
+    
+    if not job:
+        return None
+    
+    job_copy = job.copy()
 
-def run_raw_job(job_id, query):
+    if job["status"] == "Done":
+        jobs.pop(job_id, None)
+
+    return job_copy
+
+def run_raw_job(job_id, query, category):
     print(f"Query: {query}\n")
 
     print("Generating without using RAG methods...\n")
@@ -87,6 +96,8 @@ def run_rag_job(job_id, query, category):
 
     print("\n\n\nRunning RAG pipeline...")
 
+    print(f"Query: {query}\nCategory: {category}")
+
     keywords_prompt = ChatPromptTemplate.from_template( 
         """
         Give me the top 3 very strong aditional single-word keywords I can use in my search to find the answer to this query:
@@ -109,7 +120,7 @@ def run_rag_job(job_id, query, category):
     print("Keywords: " + keywords_output)
     jobs[job_id]["status"] = f"Got additional keywords to use with LLM: {keywords_output}.<br>Now searching for top events in database..." 
 
-    query_vector = embedding_model.embed_query(query + "\nKeywords: " + keywords_output)
+    query_vector = embedding_model.embed_query(f"{query}\nKeywords: {keywords_output}")
 
     search_args = {"k": 5}
 
@@ -125,7 +136,7 @@ def run_rag_job(job_id, query, category):
     section_index = {}
 
     
-    jobs[job_id]["status"] = f"Got {len(top_events) events that may match.<br>Now filtering relevant sections..."
+    jobs[job_id]["status"] = f"Got {len(top_events)} events that may match.<br>Now filtering relevant sections..."
 
     #pprint(top_events)
 
@@ -214,6 +225,7 @@ def run_rag_job(job_id, query, category):
         
         print("\nRetrieved content to use: \n")
         print(retrieved_content)
+        jobs[job_id]["status"] = f"Using {len(data.items())} events and {tot_sections} sections.<br>Performaing final generation with LLM..."
 
     except Exception:
         data = None
@@ -222,8 +234,6 @@ def run_rag_job(job_id, query, category):
     # Add today's date to the prompt so that LLM does not infer events in the future
     from datetime import datetime
     today = datetime.now().strftime("%Y-%m-%d")
-
-    jobs[job_id]["status"] = f"Using {len(data.items())} events and {tot_sections} sections.<br>Performaing final generation with LLM..."
 
     final_prompt = ChatPromptTemplate.from_template( 
         """

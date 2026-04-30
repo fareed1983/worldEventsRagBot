@@ -2,35 +2,162 @@
 
 {% block body %}
 
-<h2>Chat</h2>
-<div id="chatMessages">
-	<p>Welcome to world events chat!</p>
-</div>
-<textarea></textarea>
-<input type="button" value="Submit" onclick="submit()" />
+Select Category to query:
+<select id="categorySelector" onchange="selectCategory()"></select>
 
+<div id="chatMessages" style="border:1px solid #ccc; padding:10px; height:400px; overflow:auto;"></div>
+
+<div id="inputArea">
+    <textarea id="inputBox" style="width:100%; height:80px;"></textarea>
+    <button onclick="submit()">Send</button>
+</div>
 
 <script>
 
 const States = Object.freeze({
-	CATEGORY_SELECTION: "category selection",
-	QUERY_INPUT: "query input",
-	IN_QUEUE: "in queue",
-	PROCESSING: "processing"
-})
+    QUERY_INPUT: "query",
+    PROCESSING: "processing"
+});
 
-var state = States.CATEGORY_SELECTION;
-doCategorySelection();
+let state = States.QUERY_INPUT;
+let selectedCategory = null;
+let currentJobId = null;
 
-function doCategorySelection() {
-	var newP = document.createElement("p");
-	newP.innerHTML = "Enter the number of the category your query belongs. Selecting one would make results more accurate. Enter 0 for querying the complete dataset.";
-	document.getElementById("chatMessages").appendChild(newP);
+var categories = [];
+
+function addMessage(text) {
+    const div = document.createElement("div");
+    div.innerHTML = text;
+    document.getElementById("chatMessages").appendChild(div);
+    document.getElementById("chatMessages").scrollTop = 999999;
+}
+
+function clearInput() {
+    document.getElementById("inputBox").value = "";
+}
+
+function hideInput() {
+    document.getElementById("inputArea").style.display = "none";
+}
+
+function showInput() {
+    document.getElementById("inputArea").style.display = "block";
+}
+
+async function loadCategories() {
+    const res = await fetch("/api/categories");
+    categories = await res.json();
+    renderCategories();
+}
+
+
+function renderCategories() {
+
+    container = document.getElementById("categorySelector")
+    const allOpt = document.createElement("option");
+    allOpt.innerText = "all categories";
+    allOpt.value = undefined;
+    allOpt.onclick = () => selectCategory(null);
+    container.appendChild(allOpt);
+
+    categories.forEach((c, i) => {
+        const opt = document.createElement("option");
+        opt.innerText = c;
+        opt.value = i;
+        opt.style.margin = "3px";
+        container.appendChild(opt);
+    });
+    
+    addMessage("Welcome to world events chat. Please enter your query:");
+
+}
+
+function selectCategory() {
+    addMessage("Category chaged to: <b>" + event.target.options[event.target.selectedIndex].text) +"</b>";
+
+    selectedCategory = event.target.value;
 }
 
 function submit() {
-	
+    const text = document.getElementById("inputBox").value;
+
+    if (state === States.QUERY_INPUT) {
+        if (!text.trim()) return;
+
+        addMessage("<b>You:</b> " + text);
+        clearInput();
+
+        startJob(text);
+    }
 }
+
+function startJob(query) {
+
+    addMessage("Sending job...");
+
+    fetch("/api/events-chat-job", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            query: query,
+            category: selectedCategory,
+			mode: "rag"
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            addMessage("Error" + data.error);
+            state = States.QUERY_INPUT;
+            return;
+        }
+
+        currentJobId = data.jobId;
+        addMessage("Job started: " + currentJobId);
+
+        state = States.PROCESSING;
+        pollJob();
+    });
+}
+
+var lastStatus = null
+
+function pollJob() {
+    const interval = setInterval(() => {
+        fetch(`/api/events-chat-job/${currentJobId}`)
+        .then(res => res.json())
+        .then(data => {
+
+            if (data.error) {
+                addMessage("Error: " + data.error);
+                clearInterval(interval);
+                state = States.QUERY_INPUT;
+                return;
+            }
+
+            if (data.status) {
+				if (lastStatus === data.status) return;
+                addMessage(data.status);
+				lastStatus = data.status;
+            }
+
+            if (data.result) {
+                let result = data.result.replace(/\r?\n/g, "<br>");
+                addMessage("<p><b>Result:</b></p><p>" + result + "</p>");
+                clearInterval(interval);
+                state = States.QUERY_INPUT;
+                
+                addMessage("<br><br>Please enter your query:");
+
+            }
+        });
+
+    }, 500);
+}
+
+window.onload = loadCategories;
+
+
 
 </script>
 
