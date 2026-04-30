@@ -20,7 +20,7 @@ const States = Object.freeze({
 });
 
 let state = States.QUERY_INPUT;
-let selectedCategory = null;
+let selectedCategory = undefined;
 let currentJobId = null;
 
 var categories = [];
@@ -57,7 +57,7 @@ function renderCategories() {
     const allOpt = document.createElement("option");
     allOpt.innerText = "all categories";
     allOpt.value = undefined;
-    allOpt.onclick = () => selectCategory(null);
+    allOpt.onclick = () => selectCategory();
     container.appendChild(allOpt);
 
     categories.forEach((c, i) => {
@@ -97,11 +97,11 @@ function startJob(query) {
 
     fetch("/api/events-chat-job", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers:                                    {"Content-Type": "application/json"},
         body: JSON.stringify({
             query: query,
-            category: selectedCategory,
-			mode: "rag"
+			mode: "rag",
+            ...(selectedCategory !== undefined && {category: categories[selectedCategory]}) 
         })
     })
     .then(res => res.json())
