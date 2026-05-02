@@ -97,7 +97,9 @@ function startJob(query) {
 
     fetch("/api/events-chat-job", {
         method: "POST",
-        headers:                                    {"Content-Type": "application/json"},
+        headers: {
+            "Content-Type": "application/json"
+        },
         body: JSON.stringify({
             query: query,
 			mode: "rag",
