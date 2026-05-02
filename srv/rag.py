@@ -16,7 +16,7 @@ lock = threading.Lock()
 
 events_vector_store = Chroma(
     persist_directory="../tests/chroma_db",
-    collection_name="events",
+    collection_name="events_qa",
     embedding_function=embedding_model
 )
 
@@ -26,7 +26,7 @@ sections_vector_store = Chroma(
     embedding_function=embedding_model
 )
 
-def start_chat_job(mode, category, query):
+def start_chat_job(mode, category, query, stage1, stage2):
 
     if len(jobs) == 2:
         print("Max jobs running!")
@@ -48,7 +48,7 @@ def start_chat_job(mode, category, query):
 
     thread = threading.Thread(
         target=run_func,
-        args=(job_id, query, category)
+        args=(job_id, query, category, stage1, stage2)
     )
     
     thread.start()
@@ -68,7 +68,7 @@ def fetch_chat_job(job_id):
 
     return job_copy
 
-def run_raw_job(job_id, query, category):
+def run_raw_job(job_id, query, category, stage1, stage2):
     print(f"Query: {query}\n")
 
     print("Generating without using RAG methods...\n")
@@ -92,35 +92,49 @@ def run_raw_job(job_id, query, category):
     jobs[job_id]["result"] = raw_output
 
 
-def run_rag_job(job_id, query, category):
+def run_rag_job(job_id, query, category, stage1, stage2):
 
     print("\n\n\nRunning RAG pipeline...")
 
     print(f"Query: {query}\nCategory: {category}")
 
-    keywords_prompt = ChatPromptTemplate.from_template( 
-        """
-        Give me the top 3 very strong aditional single-word keywords I can use in my search to find the answer to this query:
-        Query: {query}
-        Just output the comma separated keywords and nothing else. I am not asking for future events. Only keywords.
-        The keywords should not include what is already in the query except if strongly required by the query.
-        Dont provide keywords already present in the query.
-        Dont say anything other than the keywords. Don't output anything else and don't complain.
-        """
-    )
 
-    chain = keywords_prompt | llm | StrOutputParser()
+    if stage1 or stage2:
+        keywords_prompt = ChatPromptTemplate.from_template( 
+            """
+            Give me the top 3 very strong aditional single-word keywords I can use in my search to find the answer to this query:
+            Query: {query}
+            Just output the comma separated keywords and nothing else. I am not asking for future events. Only keywords.
+            The keywords should not include what is already in the query except if strongly required by the query.
+            Dont provide keywords already present in the query.
+            Dont say anything other than the keywords. Don't output anything else and don't complain.
+            """
+        )
 
-    jobs[job_id]["status"] = "Getting additional keywords..."
+        chain = keywords_prompt | llm | StrOutputParser()
 
-    keywords_output = chain.invoke({
-        "query": query
-    })
+        jobs[job_id]["status"] = "Getting additional keywords..."
 
-    print("Keywords: " + keywords_output)
-    jobs[job_id]["status"] = f"Got additional keywords to use with LLM: {keywords_output}.<br>Now searching for top events in database..." 
+        keywords_output = chain.invoke({
+            "query": query
+        })
 
-    query_vector = embedding_model.embed_query(f"{query}\nKeywords: {keywords_output}")
+        print(" " + keywords_output)
+        jobs[job_id]["status"] = f"Got additional keywords to use with LLM: {keywords_output}.<br>Now searching for top events in database..." 
+        keyword_query_vector = embedding_model.embed_query(f"{query}\nKeywords: {keywords_output}")
+        
+    if stage1 == False or stage2 == False:
+        raw_query_vector = embedding_model.embed_query(query)
+            
+    if stage1:
+        stage1_query_vector = keyword_query_vector
+    else:
+        stage1_query_vector = raw_query_vector
+
+    if stage2:
+        stage2_query_vector = keyword_query_vector
+    else:
+        stage2_query_vector = raw_query_vector
 
     search_args = {"k": 5}
 
@@ -128,7 +142,7 @@ def run_rag_job(job_id, query, category):
         search_args["filter"] = {"category": category}
     
     top_events = events_vector_store.similarity_search_by_vector(
-        query_vector, 
+        stage1_query_vector, 
         **search_args
     )
 
@@ -150,7 +164,7 @@ def run_rag_job(job_id, query, category):
         event.page_content = f"{event.metadata['day']} {event.metadata['month']}, {event.metadata['year']}: {event.page_content}"
         formatted_events += f"\n\n\nEvent {event.id}: {event.page_content}"
         top_sections = sections_vector_store.similarity_search_by_vector(
-            query_vector,
+            stage2_query_vector,
             k=5,
             ids=event.metadata["sections"]
         )

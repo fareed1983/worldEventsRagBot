@@ -2,14 +2,47 @@
 
 {% block body %}
 
-Select Category to query:
-<select id="categorySelector" onchange="selectCategory()"></select>
 
-<div id="chatMessages" style="border:1px solid #ccc; padding:10px; height:400px; overflow:auto;"></div>
+<div class="main-container">
+    
+    <div class="top-controls">
+        <span style="font-weight: 600;">Category:</span>
+        <select id="categorySelector" onchange="selectCategory()"></select>
+    </div>
 
-<div id="inputArea">
-    <textarea id="inputBox" style="width:100%; height:80px;"></textarea>
-    <button onclick="submit()">Send</button>
+    <div class="comparison-wrapper">
+        <!-- RAG Column 1 -->
+        <div class="rag-column">
+            <div class="column-header">
+                <h3>RAG 1</h3>
+                <div class="augmentation-controls">
+                    <span>Keyword Augmentation:</span>
+                    <label><input type="checkbox" id="lStage1Expansion" checked> Stage 1</label>
+                    <label><input type="checkbox" id="lStage2Expansion" checked> Stage 2</label>
+                </div>
+            </div>
+            <div id="ragMessages" class="chat-box"></div>
+        </div>
+
+        <!-- RAG Column 2 -->
+        <div class="rag-column">
+            <div class="column-header">
+                <h3>RAG 2</h3>
+                <div class="augmentation-controls">
+                    <span>Augmentation:</span>
+                    <label><input type="checkbox" id="rStage1Expansion" checked> Stage 1</label>
+                    <label><input type="checkbox" id="rStage2Expansion" checked> Stage 2</label>
+                </div>
+            </div>
+            <div id="rawMessages" class="chat-box"></div>
+        </div>
+    </div>
+
+    <div id="inputArea" class="input-wrapper">
+        <textarea id="inputBox" placeholder="Ask a question about world events..."></textarea> 
+        <button onclick="submit()">Send Query</button> 
+    </div>
+
 </div>
 
 <script>
@@ -25,11 +58,11 @@ let currentJobId = null;
 
 var categories = [];
 
-function addMessage(text) {
+function addMessage(target, text) {
     const div = document.createElement("div");
     div.innerHTML = text;
-    document.getElementById("chatMessages").appendChild(div);
-    document.getElementById("chatMessages").scrollTop = 999999;
+    document.getElementById(target).appendChild(div);
+    document.getElementById(target).scrollTop = 999999;
 }
 
 function clearInput() {
@@ -68,8 +101,8 @@ function renderCategories() {
         container.appendChild(opt);
     });
     
-    addMessage("Welcome to world events chat. Please enter your query:");
-
+    addMessage("ragMessages", "Welcome to world events chat. Please enter your query:");
+    addMessage("rawMessages", "Welcome to world events chat. Please enter your query:");
 }
 
 function selectCategory() {
@@ -84,73 +117,94 @@ function submit() {
     if (state === States.QUERY_INPUT) {
         if (!text.trim()) return;
 
-        addMessage("<b>You:</b> " + text);
-        clearInput();
+        addMessage("ragMessages", "<b>You:</b> " + text);
+        addMessage("rawMessages", "<b>You:</b> " + text);
 
+        clearInput();
         startJob(text);
     }
 }
 
 function startJob(query) {
 
-    addMessage("Sending job...");
+    addMessage("ragMessages", "Sending job...");
+    addMessage("rawMessages", "Sending job...");
 
     fetch("/api/events-chat-job", {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
+        headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
             query: query,
-			mode: "rag",
-            ...(selectedCategory !== undefined && {category: categories[selectedCategory]}) 
+            stage1: lStage1Expansion.checked,
+            stage2: lStage2Expansion.checked,
+            mode: "rag",
+            ...(selectedCategory !== undefined && {
+                category: categories[selectedCategory]
+            })
         })
     })
     .then(res => res.json())
-    .then(data => {
-        if (data.error) {
-            addMessage("Error" + data.error);
-            state = States.QUERY_INPUT;
-            return;
-        }
+    .then(data => handleJobResponse(data, "ragMessages"));
 
-        currentJobId = data.jobId;
-        addMessage("Job started: " + currentJobId);
-
-        state = States.PROCESSING;
-        pollJob();
-    });
+    fetch("/api/events-chat-job", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            query: query,
+            mode: "rag",
+            stage1: rStage1Expansion.checked,
+            stage2: rStage2Expansion.checked,
+            ...(selectedCategory !== undefined && {
+                category: categories[selectedCategory]
+            })
+        })
+    })
+    .then(res => res.json())
+    .then(data => handleJobResponse(data, "rawMessages"));
 }
 
 var lastStatus = null
 
-function pollJob() {
+function handleJobResponse(data, target) {
+
+    if (data.error) {
+        addMessage(target, "Error: " + data.error);
+        return;
+    }
+
+    const jobId = data.jobId;
+    addMessage(target, "Job started: " + jobId);
+
+    pollJob(jobId, target);
+}
+
+function pollJob(jobId, target) {
+
+    let lastStatus = null;
+
     const interval = setInterval(() => {
-        fetch(`/api/events-chat-job/${currentJobId}`)
+
+        fetch(`/api/events-chat-job/${jobId}`)
         .then(res => res.json())
         .then(data => {
 
             if (data.error) {
-                addMessage("Error: " + data.error);
+                addMessage(target, "Error: " + data.error);
                 clearInterval(interval);
-                state = States.QUERY_INPUT;
                 return;
             }
 
-            if (data.status) {
-				if (lastStatus === data.status) return;
-                addMessage(data.status);
-				lastStatus = data.status;
+            if (data.status && data.status !== lastStatus) {
+                addMessage(target, data.status);
+                lastStatus = data.status;
             }
 
             if (data.result) {
                 let result = data.result.replace(/\r?\n/g, "<br>");
-                addMessage("<p><b>Result:</b></p><p>" + result + "</p>");
-                clearInterval(interval);
-                state = States.QUERY_INPUT;
-                
-                addMessage("<br><br>Please enter your query:");
+                addMessage(target, "<p><b>Result:</b></p><p>" + result + "</p>");
 
+                clearInterval(interval);
+                addMessage(target, "<br><br>Ready for next query");
             }
         });
 

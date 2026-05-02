@@ -44,11 +44,14 @@ def post_events_chat_job():
 	if not query:
 		return jsonify({"error": "Missing required parameter: query"}), 400
 
+	stage1 = data.get("stage1", "True")
+	stage2 = data.get("stage2", "True")
+
 	if mode != "raw" and mode != "rag":
 		return jsonify({"error": "Bad value for mode parameter"}), 400
 	
 	category = data.get("category") # can be posted without a category
-	job_id = start_chat_job(mode, category, query)
+	job_id = start_chat_job(mode, category, query, stage1, stage2)
 
 	if job_id is None:
 		return jsonify({"error": "Server busy"}), 429
