@@ -73,4 +73,4 @@ def get_chat_job(job_id):
 
 
 if __name__ == "__main__":
-	srv.run(debug=True)
+	srv.run(host="0.0.0.0", port=5000, debug=True)

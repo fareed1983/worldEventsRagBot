@@ -21,7 +21,7 @@
                     <label><input type="checkbox" id="lStage2Expansion" checked> Stage 2</label>
                 </div>
             </div>
-            <div id="ragMessages" class="chat-box"></div>
+            <div id="rag1Messages" class="chat-box"></div>
         </div>
 
         <!-- RAG Column 2 -->
@@ -29,12 +29,12 @@
             <div class="column-header">
                 <h3>RAG 2</h3>
                 <div class="augmentation-controls">
-                    <span>Augmentation:</span>
+                    <span>Keyword Augmentation:</span>
                     <label><input type="checkbox" id="rStage1Expansion" checked> Stage 1</label>
                     <label><input type="checkbox" id="rStage2Expansion" checked> Stage 2</label>
                 </div>
             </div>
-            <div id="rawMessages" class="chat-box"></div>
+            <div id="rag2Messages" class="chat-box"></div>
         </div>
     </div>
 
@@ -101,12 +101,13 @@ function renderCategories() {
         container.appendChild(opt);
     });
     
-    addMessage("ragMessages", "Welcome to world events chat. Please enter your query:");
-    addMessage("rawMessages", "Welcome to world events chat. Please enter your query:");
+    addMessage("rag1Messages", "Welcome to world events chat. Please enter your query:");
+    addMessage("rag2Messages", "Welcome to world events chat. Please enter your query:");
 }
 
 function selectCategory() {
-    addMessage("Category chaged to: <b>" + event.target.options[event.target.selectedIndex].text) +"</b>";
+    addMessage("rag1Messages", "Category chaged to: <b>" + event.target.options[event.target.selectedIndex].text) +"</b>";
+    addMessage("rag2Messages", "Category chaged to: <b>" + event.target.options[event.target.selectedIndex].text) +"</b>";
 
     selectedCategory = event.target.value;
 }
@@ -117,8 +118,8 @@ function submit() {
     if (state === States.QUERY_INPUT) {
         if (!text.trim()) return;
 
-        addMessage("ragMessages", "<b>You:</b> " + text);
-        addMessage("rawMessages", "<b>You:</b> " + text);
+        addMessage("rag1Messages", "<b>You:</b> " + text);
+        addMessage("rag2Messages", "<b>You:</b> " + text);
 
         clearInput();
         startJob(text);
@@ -127,8 +128,8 @@ function submit() {
 
 function startJob(query) {
 
-    addMessage("ragMessages", "Sending job...");
-    addMessage("rawMessages", "Sending job...");
+    addMessage("rag1Messages", "Sending job...");
+    addMessage("rag2Messages", "Sending job...");
 
     fetch("/api/events-chat-job", {
         method: "POST",
@@ -144,7 +145,7 @@ function startJob(query) {
         })
     })
     .then(res => res.json())
-    .then(data => handleJobResponse(data, "ragMessages"));
+    .then(data => handleJobResponse(data, "rag1Messages"));
 
     fetch("/api/events-chat-job", {
         method: "POST",
@@ -160,7 +161,7 @@ function startJob(query) {
         })
     })
     .then(res => res.json())
-    .then(data => handleJobResponse(data, "rawMessages"));
+    .then(data => handleJobResponse(data, "rag2Messages"));
 }
 
 var lastStatus = null

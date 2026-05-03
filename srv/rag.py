@@ -5,8 +5,11 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_chroma import Chroma
 from pprint import pprint
 import uuid
+import time
 
-llm = ChatOllama(model="llama3.2:3b")
+# llm = ChatOllama(model="llama3.2:3b")
+llm = ChatOllama(model="llama3.2:3b", temperature=0)
+
 embedding_model = OllamaEmbeddings(model="mxbai-embed-large")
 
 jobs = {}
@@ -120,9 +123,11 @@ def run_rag_job(job_id, query, category, stage1, stage2):
         })
 
         print(" " + keywords_output)
-        jobs[job_id]["status"] = f"Got additional keywords to use with LLM: {keywords_output}.<br>Now searching for top events in database..." 
+        jobs[job_id]["status"] = f"Additional keywords: {keywords_output}.<br>Now searching for top events in database..." 
         keyword_query_vector = embedding_model.embed_query(f"{query}\nKeywords: {keywords_output}")
-        
+
+        time.sleep(0.25)
+
     if stage1 == False or stage2 == False:
         raw_query_vector = embedding_model.embed_query(query)
             
