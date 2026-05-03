@@ -2,3 +2,4 @@ jupyterlab
 datasets
 langchain_ollama
 langchain_chroma
+langchain_openai

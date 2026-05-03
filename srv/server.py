@@ -1,5 +1,5 @@
 from flask import Flask, render_template, jsonify, request
-from rag import start_chat_job, fetch_chat_job
+from rag import start_chat_job, fetch_chat_job, evaluate_resp
 import sys
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -29,6 +29,29 @@ def chat():
 @srv.route('/api/categories')
 def categories():
 	return jsonify(dataset_categories)
+
+@srv.route('/api/evaluation', methods=['POST'])
+def post_response_evaluation():
+	data = request.get_json()
+
+	if not data:
+		return jsonify({"error": "Missing JSON body"}), 400
+	
+	query = data.get("query")
+	res1 = data.get("response1")
+	res2 = data.get("response2")
+
+	if not res1 or not res2 or not query:
+		return jsonify({"error": "query, response1 or response2 missing"}), 400
+	
+
+	response = evaluate_resp(query, res1, res2)
+
+	if response is None:
+		return jsonify({"error": "Server busy"}), 429
+
+	return jsonify(response)
+	
 
 @srv.route('/api/events-chat-job', methods=['POST'])
 def post_events_chat_job():
@@ -70,6 +93,7 @@ def get_chat_job(job_id):
 		return jsonify({"error": "Job not found"}), 404
 
 	return jsonify(job)
+
 
 
 if __name__ == "__main__":

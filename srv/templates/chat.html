@@ -18,10 +18,10 @@
                 <div class="augmentation-controls">
                     <span>Keyword Augmentation:</span>
                     <label><input type="checkbox" id="lStage1Expansion" checked> Stage 1</label>
-                    <label><input type="checkbox" id="lStage2Expansion" checked> Stage 2</label>
+                    <label><input type="checkbox" id="lStage2Expansion"> Stage 2</label>
                 </div>
             </div>
-            <div id="rag1Messages" class="chat-box"></div>
+            <div id="ragA" class="chat-box"></div>
         </div>
 
         <!-- RAG Column 2 -->
@@ -34,13 +34,16 @@
                     <label><input type="checkbox" id="rStage2Expansion" checked> Stage 2</label>
                 </div>
             </div>
-            <div id="rag2Messages" class="chat-box"></div>
+            <div id="ragB" class="chat-box"></div>
         </div>
     </div>
 
     <div id="inputArea" class="input-wrapper">
-        <textarea id="inputBox" placeholder="Ask a question about world events..."></textarea> 
-        <button onclick="submit()">Send Query</button> 
+        <textarea id="inputBox" placeholder="Ask a question about world events..."></textarea>
+        <div class="button-group">
+            <button onclick="submit()">Send Query</button>
+            <button id="evalButton" onclick="evaluate_response()" disabled>Evaluate</button>
+        </div>
     </div>
 
 </div>
@@ -101,16 +104,18 @@ function renderCategories() {
         container.appendChild(opt);
     });
     
-    addMessage("rag1Messages", "Welcome to world events chat. Please enter your query:");
-    addMessage("rag2Messages", "Welcome to world events chat. Please enter your query:");
+    addMessage("ragA", "Welcome to world events chat. Please enter your query:");
+    addMessage("ragB", "Welcome to world events chat. Please enter your query:");
 }
 
 function selectCategory() {
-    addMessage("rag1Messages", "Category chaged to: <b>" + event.target.options[event.target.selectedIndex].text) +"</b>";
-    addMessage("rag2Messages", "Category chaged to: <b>" + event.target.options[event.target.selectedIndex].text) +"</b>";
+    addMessage("ragA", "Category chaged to: <b>" + event.target.options[event.target.selectedIndex].text) +"</b>";
+    addMessage("ragB", "Category chaged to: <b>" + event.target.options[event.target.selectedIndex].text) +"</b>";
 
     selectedCategory = event.target.value;
 }
+
+let lastQuery = ""
 
 function submit() {
     const text = document.getElementById("inputBox").value;
@@ -118,18 +123,23 @@ function submit() {
     if (state === States.QUERY_INPUT) {
         if (!text.trim()) return;
 
-        addMessage("rag1Messages", "<b>You:</b> " + text);
-        addMessage("rag2Messages", "<b>You:</b> " + text);
+        addMessage("ragA", "<b>You:</b> " + text);
+        addMessage("ragB", "<b>You:</b> " + text);
 
         clearInput();
         startJob(text);
+
+        tot_responses = 0;
+        document.getElementById("evalButton").disabled = true;
     }
 }
 
 function startJob(query) {
+    
+    lastQuery = query;
 
-    addMessage("rag1Messages", "Sending job...");
-    addMessage("rag2Messages", "Sending job...");
+    addMessage("ragA", "Sending job...");
+    addMessage("ragB", "Sending job...");
 
     fetch("/api/events-chat-job", {
         method: "POST",
@@ -145,7 +155,7 @@ function startJob(query) {
         })
     })
     .then(res => res.json())
-    .then(data => handleJobResponse(data, "rag1Messages"));
+    .then(data => handleJobResponse(data, "ragA"));
 
     fetch("/api/events-chat-job", {
         method: "POST",
@@ -161,7 +171,7 @@ function startJob(query) {
         })
     })
     .then(res => res.json())
-    .then(data => handleJobResponse(data, "rag2Messages"));
+    .then(data => handleJobResponse(data, "ragB"));
 }
 
 var lastStatus = null
@@ -178,6 +188,9 @@ function handleJobResponse(data, target) {
 
     pollJob(jobId, target);
 }
+
+let tot_responses = 0;
+let responses = {};
 
 function pollJob(jobId, target) {
 
@@ -205,11 +218,71 @@ function pollJob(jobId, target) {
                 addMessage(target, "<p><b>Result:</b></p><p>" + result + "</p>");
 
                 clearInterval(interval);
-                addMessage(target, "<br><br>Ready for next query");
+                // addMessage(target, "<br><br>Ready for next query");
+                responses[target] = data.result;
+                tot_responses++;
+
+                if (tot_responses == 2) {
+                    document.getElementById("evalButton").disabled = false;
+                }
             }
         });
 
     }, 500);
+}
+
+function evaluate_response() {
+    if (tot_responses != 2) return;
+    
+    document.getElementById("evalButton").disabled = true;
+
+    fetch("/api/evaluation", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            query: lastQuery,
+            response1: responses["ragA"],
+            response2: responses["ragB"]
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        console.log("EVAL RESPONSE:", JSON.stringify(data));
+
+        if (!data || !data.scores || !data.reasoning) {
+            console.error("Invalid evaluation response:", data);
+            return;
+        }
+        const a = data.scores.answer_a;
+        const b = data.scores.answer_b;
+
+        const evalA = `
+            <hr>
+            <b>Evaluation</b><br>
+            Overall: ${a.overall}<br>
+            Factual: ${a.factual_correctness}<br>
+            Completeness: ${a.completeness}<br>
+            Relevance: ${a.relevance}<br>
+            Clarity: ${a.clarity}<br>
+            Hallucination Risk: ${a.hallucination_risk}<br>
+            <br><i>${data.reasoning.answer_a}</i>
+        `;
+
+        const evalB = `
+            <hr>
+            <b>Evaluation</b><br>
+            Overall: ${b.overall}<br>
+            Factual: ${b.factual_correctness}<br>
+            Completeness: ${b.completeness}<br>
+            Relevance: ${b.relevance}<br>
+            Clarity: ${b.clarity}<br>
+            Hallucination Risk: ${b.hallucination_risk}<br>
+            <br><i>${data.reasoning.answer_b}</i>
+        `;
+
+        addMessage("ragA", evalA);
+        addMessage("ragB", evalB);
+    });    
 }
 
 window.onload = loadCategories;

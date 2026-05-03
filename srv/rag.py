@@ -1,14 +1,27 @@
 import threading
 from langchain_ollama import OllamaEmbeddings, ChatOllama
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_chroma import Chroma
 from pprint import pprint
 import uuid
 import time
+import os
+import json
 
-# llm = ChatOllama(model="llama3.2:3b")
-llm = ChatOllama(model="llama3.2:3b", temperature=0)
+# ollama_llm = ChatOllama(model="llama3.2:3b")
+ollama_llm = ChatOllama(
+    model="llama3.2:3b",
+    temperature=0
+)
+
+openai_llm = ChatOpenAI(
+    model="gpt-5.4-mini",
+    api_key=os.environ["OPENAI_API_KEY"],       # export this into env
+    temperature=0
+)
 
 embedding_model = OllamaEmbeddings(model="mxbai-embed-large")
 
@@ -35,7 +48,7 @@ def start_chat_job(mode, category, query, stage1, stage2):
         print("Max jobs running!")
         return None
     
-    print("Starting job...")
+    print("Starting chat job...")
     job_id = str(uuid.uuid4())
 
     jobs[job_id] = {
@@ -83,7 +96,7 @@ def run_raw_job(job_id, query, category, stage1, stage2):
         """
     )
 
-    chain = raw_prompt | llm | StrOutputParser()
+    chain = raw_prompt | ollama_llm | StrOutputParser()
     raw_output = chain.invoke({
         "query": query
     })
@@ -105,16 +118,21 @@ def run_rag_job(job_id, query, category, stage1, stage2):
     if stage1 or stage2:
         keywords_prompt = ChatPromptTemplate.from_template( 
             """
-            Give me the top 3 very strong aditional single-word keywords I can use in my search to find the answer to this query:
+                    
             Query: {query}
+
+            Give me the top 3 very strong aditional single-word keywords I can use in my search to find the answer to the above query.
+            Even if you don't know the answer to the query, provide me keywords you think may be relevant.
             Just output the comma separated keywords and nothing else. I am not asking for future events. Only keywords.
-            The keywords should not include what is already in the query except if strongly required by the query.
+            The keywords should not include the words already in the query.
             Dont provide keywords already present in the query.
+            The new keywords must not be in the query provided.
+            Even if you cannot find anything about the event, do not output anything other than the keywords.
             Dont say anything other than the keywords. Don't output anything else and don't complain.
             """
         )
 
-        chain = keywords_prompt | llm | StrOutputParser()
+        chain = keywords_prompt | ollama_llm | StrOutputParser()
 
         jobs[job_id]["status"] = "Getting additional keywords..."
 
@@ -207,7 +225,7 @@ def run_rag_job(job_id, query, category, stage1, stage2):
     print(f"\nSelect events prompt length: {len(filled_select_events_prompt)}\n\n")
     jobs[job_id]["status"] = f"Discarding irrelevant events and sections with LLM..."
 
-    chain = select_events_prompt | llm | StrOutputParser()
+    chain = select_events_prompt | ollama_llm | StrOutputParser()
     json_str = chain.invoke({
         "query": query,
         "formatted_events": formatted_events
@@ -283,7 +301,7 @@ def run_rag_job(job_id, query, category, stage1, stage2):
 
     print(f"\nFinal prompt length: {len(filled_final_prompt)}\n\n")
 
-    chain = final_prompt | llm | StrOutputParser()
+    chain = final_prompt | ollama_llm | StrOutputParser()
 
     output = chain.invoke({
         "query": query,
@@ -298,3 +316,134 @@ def run_rag_job(job_id, query, category, stage1, stage2):
     jobs[job_id]["result"] = output
 
 
+
+
+
+def evaluate_resp(query, res1, res2):
+    print(f"Query: {query}\n")
+
+    print("Evaluating responses...\n")
+
+    messages = ChatPromptTemplate.from_messages([
+        """
+        You are an impartial evaluation system comparing two answers generated for the same question using different RAG pipelines.
+
+        You will be given:
+
+        A user question
+        Answer A (Using RAG pipeline strategy A)
+        Answer B (Using RAG pipeline strategy B)
+
+        * Evaluation Task
+
+        Evaluate both answers against facts strictly based on:
+
+        Factual correctness
+        Completeness (graded against the completeness of answer)
+        Relevance (answers must be relevant to the question asked)
+        Clarity (well-structured, readable, unambiguous)
+        Hallucination risk (contains unsupported or false information)
+
+        * Scoring Rules
+
+        Each metric is scored from 1 to 5:
+
+        1 = very poor
+        3 = average
+        5 = excellent
+
+        * Important:
+        Hallucination risk is inverted in meaning
+        5 = fully grounded, no hallucination
+        1 = severe hallucination / many unsupported claims
+
+        * Overall Score
+        overall = average of the 5 metrics
+        Round to 2 decimal places
+
+        * Output Requirements
+
+        Return ONLY valid JSON.
+
+        No explanations outside JSON. No markdown. No extra text.
+
+        * JSON Schema (STRICT)
+        {{
+            "question": "...",
+            "scores": {{
+                "answer_a": {{
+                "factual_correctness": 0,
+                "completeness": 0,
+                "relevance": 0,
+                "clarity": 0,
+                "hallucination_risk": 0,
+                "overall": 0
+                }},
+                "answer_b": {{
+                "factual_correctness": 0,
+                "completeness": 0,
+                "relevance": 0,
+                "clarity": 0,
+                "hallucination_risk": 0,
+                "overall": 0
+                }}
+            }},
+            "winner": "A | B | tie",
+            "reasoning": {{
+                "answer_a": "short justification",
+                "answer_b": "short justification"
+            }}
+        }}
+
+        * Decision Rules
+        Choose winner based on overall score
+        If difference < 0.25 → return "tie"
+        Be strict: prefer factual grounding over fluency or verbosity
+        Do NOT assume any facts outside the provided context
+        Penalize hallucinated content heavily even if answer is fluent
+        
+        * Input Format
+
+        QUESTION:
+        <question>
+
+        ANSWER_A:
+        <base_model_output>
+
+        ANSWER_B:
+        <finetuned_model_output>
+        """,
+        
+        """
+        QUESTION:
+        {query}
+
+
+        ANSWER_A:
+        {res1}
+        
+
+        ANSWER_B:
+        {res2}
+        """
+    ])
+
+    chain = messages | openai_llm | StrOutputParser()
+
+    response = chain.invoke({
+        "query": query,
+        "res1": res1,
+        "res2": res2
+    })
+
+    print("Eval Output:\n\n")
+    print(response)
+
+    try:
+        data = json.loads(response)
+
+    except Exception:
+        data = None
+        return None
+
+    return data

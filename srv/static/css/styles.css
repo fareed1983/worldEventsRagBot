@@ -113,6 +113,7 @@ textarea {
     border-radius: 8px;
     border: 1px solid var(--border-color);
     font-family: inherit;
+    font-size: 14px;
     resize: none;
     box-sizing: border-box;
     margin-bottom: 10px;
@@ -124,6 +125,12 @@ textarea:focus {
     border-color: var(--primary-accent);
 }
 
+.button-group {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
 button {
     background-color: var(--primary-accent);
     color: white;
@@ -133,8 +140,17 @@ button {
     font-weight: 600;
     cursor: pointer;
     transition: opacity 0.2s;
-    display: block;
-    margin-left: auto;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Optional: Add a different style for disabled button */
+button:disabled:hover {
+    opacity: 0.5;
+    transform: none;
 }
 
 button:hover {
