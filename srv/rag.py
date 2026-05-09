@@ -18,7 +18,8 @@ ollama_llm = ChatOllama(
 )
 
 openai_llm = ChatOpenAI(
-    model="gpt-5.4-mini",
+    #model="gpt-5.4-mini",
+    model="gpt-5.5",
     api_key=os.environ["OPENAI_API_KEY"],       # export this into env
     temperature=0
 )
@@ -121,7 +122,7 @@ def run_rag_job(job_id, query, category, stage1, stage2):
                     
             Query: {query}
 
-            Give me the top 3 very strong aditional single-word keywords I can use in my search to find the answer to the above query.
+            Give me the top 5 (five) very strong aditional single-word keywords I can use in my search to find the answer to the above query.
             Even if you don't know the answer to the query, provide me keywords you think may be relevant.
             Just output the comma separated keywords and nothing else. I am not asking for future events. Only keywords.
             The keywords should not include the words already in the query.
@@ -342,7 +343,7 @@ def evaluate_resp(query, res1, res2):
         Completeness (graded against the completeness of answer)
         Relevance (answers must be relevant to the question asked)
         Clarity (well-structured, readable, unambiguous)
-        Hallucination risk (contains unsupported or false information)
+        Hallucination risk (contains unsupported or false information) (less is worse)
 
         * Scoring Rules
 
